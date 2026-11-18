@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>PathSnap · Evaluator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>PathSnap</h1>
+        <p class="brand-sub">Evaluator console</p>
+      </div>
+    </div>
+
+    <form id="connect-form" class="connect" autocomplete="off">
+      <label for="api-url">API</label>
+      <input id="api-url" name="api-url" type="url" inputmode="url"
+             placeholder="http://192.168.1.10:8000" required />
+      <button id="connect-btn" type="submit" class="btn btn-secondary">Connect</button>
+      <span id="status" class="status" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="status-text">Not connected</span>
+      </span>
+    </form>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar" aria-label="Evaluation controls">
+      <section class="card">
+        <h2 class="card-title">Evaluation trip</h2>
+        <label for="trip-select" class="field-label">Select one of the reserved trips</label>
+        <select id="trip-select" disabled>
+          <option value="">Connect to load trips</option>
+        </select>
+        <button id="run-btn" type="button" class="btn btn-primary btn-block" disabled>
+          <span class="btn-label">Run prediction</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+        <p id="error" class="alert" role="alert" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Results</h2>
+        <div id="metrics" class="metrics"></div>
+        <p id="metrics-hint" class="empty">No results yet. Run a prediction to see metrics.</p>
+        <p id="route-info" class="route-info"></p>
+      </section>
+
+      <section class="card">
+        <details class="log-details">
+          <summary>Request log</summary>
+          <ul id="log" class="log"></ul>
+        </details>
+      </section>
+    </aside>
+
+    <section class="map-panel" aria-label="Route map">
+      <div class="map-header">
+        <h2 class="card-title">Route map</h2>
+        <div class="legend" aria-hidden="true">
+          <span><i class="swatch swatch-gps"></i>GPS observations</span>
+          <span><i class="swatch swatch-route"></i>Predicted route</span>
+          <span><i class="swatch swatch-road"></i>Road network</span>
+        </div>
+      </div>
+      <div class="map-frame">
+        <div id="map"></div>
+        <div id="map-empty" class="map-overlay">
+          <p>Select a trip and run a prediction to view the route.</p>
+        </div>
+        <div id="map-loading" class="map-overlay" hidden>
+          <span class="spinner spinner-lg" aria-hidden="true"></span>
+          <p>Running prediction…</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
