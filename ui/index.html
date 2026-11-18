@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PathSnap Evaluator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1b1b1a; --ink2: #5d5c58; --line: #e3e1dc;
+    --accent: #2a78d6; --accent-soft: #e6f0fb; --orange: #e0662f; --good: #2f8a4c; --bad: #c43d3d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1e; --ink: #ecebe8; --ink2: #a3a29d; --line: #343432;
+            --accent: #5a9be6; --accent-soft: #1d2a3a; --orange: #ee8550; --good: #5fbf7e; --bad: #e36c6c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  .app { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 20px; }
+  h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink2); margin: 0 0 18px; font-size: 13px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink2); margin: 22px 0 8px; font-weight: 600; }
+  .row { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 8px 12px; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { margin-top: 8px; font-size: 13px; color: var(--ink2); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .dot.ok { background: var(--good); } .dot.err { background: var(--bad); }
+  .trips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .trips button { text-align: left; font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; align-items: center; }
+  .trips button.active { border-color: var(--accent); background: var(--accent-soft); }
+  .trips .score { font-size: 12px; color: var(--ink2); }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .card .label { font-size: 12px; color: var(--ink2); }
+  .card .value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .card.main { border-color: var(--accent); background: var(--accent-soft); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+  th, td { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: right; }
+  th:first-child, td:first-child { text-align: left; color: var(--ink2); font-weight: 400; }
+  th { font-weight: 600; font-size: 12px; color: var(--ink2); }
+  .up { color: var(--good); }
+  .stages div { display: grid; grid-template-columns: 92px 1fr 52px; gap: 8px; align-items: center; font-size: 13px; margin: 4px 0; }
+  .bar { height: 8px; background: var(--accent); border-radius: 4px; min-width: 2px; }
+  .muted { color: var(--ink2); font-size: 12px; }
+  .note { margin-top: 18px; padding: 10px 12px; border-radius: 8px; background: var(--bg); color: var(--ink2); font-size: 12px; }
+  main { position: relative; }
+  #map { position: absolute; inset: 0; background: var(--bg); }
+  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.25); z-index: 1000; }
+  .overlay.show { display: flex; }
+  .overlay .box { background: var(--panel); padding: 16px 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,.2); }
+  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink2); z-index: 500; pointer-events: none; }
+  [hidden] { display: none !important; }
+  .legend { position: absolute; bottom: 24px; left: 12px; z-index: 900; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .legend label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 2px 0; }
+  .sw { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
+  .sw.pt { width: 8px; height: 8px; border-radius: 50%; }
+  @media (max-width: 800px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh; height: auto; } aside { border-right: 0; } main { height: 60vh; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>PathSnap</h1>
+    <p class="sub">Map-matching evaluation — classifier + HMM/Viterbi</p>
+
+    <h2>API server (Laptop 1)</h2>
+    <div class="row">
+      <input id="api" type="text" spellcheck="false" placeholder="http://192.168.1.20:8000">
+      <button id="connect" class="primary">Connect</button>
+    </div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">Not connected</span></div>
+
+    <h2>Evaluation trips</h2>
+    <div id="trips" class="trips"><span class="muted">Connect to load the trips.</span></div>
+
+    <div id="results" hidden>
+      <h2>Trip <span id="r-trip"></span></h2>
+      <div class="hero">
+        <div class="card main"><div class="label">Top-1 accuracy (HMM)</div><div class="value" id="r-top1">–</div></div>
+        <div class="card"><div class="label">Route F1 (HMM)</div><div class="value" id="r-f1">–</div></div>
+      </div>
+
+      <h2>Classifier only vs classifier + HMM</h2>
+      <table>
+        <thead><tr><th></th><th>Classifier</th><th>+ HMM</th></tr></thead>
+        <tbody id="r-table"></tbody>
+      </table>
+      <p class="muted" id="r-eval-note"></p>
+
+      <h2>Pipeline run</h2>
+      <div class="stages" id="r-stages"></div>
+      <table style="margin-top:8px"><tbody id="r-stats"></tbody></table>
+    </div>
+
+    <div class="note">Ground-truth routes stay on the API server. This page receives only the predicted route and the accuracy the server computed.</div>
+  </aside>
+
+  <main>
+    <div id="map"></div>
+    <div id="empty" class="empty">Select a trip to run the pipeline</div>
+    <div id="legend" class="legend" hidden>
+      <label><input type="checkbox" id="lg-route" checked><span class="sw" style="background:var(--accent)"></span>Predicted route (HMM)</label>
+      <label><input type="checkbox" id="lg-clf"><span class="sw" style="background:var(--orange)"></span>Classifier only</label>
+      <label><input type="checkbox" id="lg-gps" checked><span class="sw pt" style="background:#555"></span>GPS points</label>
+    </div>
+    <div id="overlay" class="overlay"><div class="box">Running the full pipeline on the API…</div></div>
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const pct = x => x == null ? "–" : (100 * x).toFixed(1) + "%";
+const num = x => x == null ? "–" : x.toLocaleString();
+let API = "", map, layers = {}, renderers = {};
+
+function getStored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function setStored(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+const fromQuery = new URLSearchParams(location.search).get("api");
+$("api").value = fromQuery || getStored("pathsnap-api") || "http://localhost:8000";
+
+function setStatus(text, state) { $("status").textContent = text; $("dot").className = "dot " + (state || ""); }
+
+async function connect() {
+  API = $("api").value.trim().replace(/\/+$/, "");
+  setStatus("Connecting…");
+  try {
+    const h = await (await fetch(API + "/health")).json();
+    const t = await (await fetch(API + "/trips")).json();
+    setStored("pathsnap-api", API);
+    setStatus(`Connected · ${h.classifier} · ${t.trips.length} trips`, "ok");
+    $("trips").innerHTML = "";
+    t.trips.forEach(id => {
+      const b = document.createElement("button");
+      b.dataset.trip = id;
+      b.innerHTML = `<span>${id}</span><span class="score"></span>`;
+      b.onclick = () => run(id);
+      $("trips").appendChild(b);
+    });
+    if (!t.trips.length) $("trips").innerHTML = '<span class="muted">The API has no trips in its TRIPS_DIR.</span>';
+  } catch (e) {
+    setStatus("Cannot reach " + API + " — check the address and that the API is running", "err");
+  }
+}
+
+function initMap() {
+  if (map || typeof L === "undefined") return;
+  map = L.map("map");
+  // one pane (and canvas) per layer, so the stacking order never changes when layers are toggled
+  [["gpsPane", 410], ["routePane", 420], ["clfPane", 430]].forEach(([name, z]) => {
+    map.createPane(name).style.zIndex = z;
+    renderers[name] = L.canvas({ pane: name });
+  });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+}
+
+async function run(id) {
+  document.querySelectorAll(".trips button").forEach(b => { b.classList.toggle("active", b.dataset.trip === id); b.disabled = true; });
+  $("overlay").classList.add("show");
+  try {
+    const res = await fetch(API + "/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trip_id: id }) });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    show(await res.json());
+  } catch (e) {
+    setStatus("Prediction failed for " + id + ": " + e.message, "err");
+  } finally {
+    $("overlay").classList.remove("show");
+    document.querySelectorAll(".trips button").forEach(b => b.disabled = false);
+  }
+}
+
+function show(r) {
+  const ev = r.evaluation || {}, h = ev.hmm || {}, c = ev.classifier || {};
+  $("results").hidden = false;
+  $("r-trip").textContent = r.trip_id;
+  $("r-top1").textContent = ev.available ? pct(h.top1) : "n/a";
+  $("r-f1").textContent = ev.available ? h.route_f1.toFixed(3) : "n/a";
+  const btn = document.querySelector(`.trips button[data-trip="${r.trip_id}"] .score`);
+  if (btn && ev.available) btn.textContent = pct(h.top1);
+
+  const rows = [
+    ["Top-1 accuracy", c.top1, h.top1, pct],
+    ["Route precision", c.route_precision, h.route_precision, x => x == null ? "–" : x.toFixed(3)],
+    ["Route recall", c.route_recall, h.route_recall, x => x == null ? "–" : x.toFixed(3)],
+    ["Route F1", c.route_f1, h.route_f1, x => x == null ? "–" : x.toFixed(3)],
+    ["Route continuity", r.continuity.classifier, r.continuity.hmm, pct],
+  ];
+  $("r-table").innerHTML = rows.map(([n, a, b, f]) =>
+    `<tr><td>${n}</td><td>${f(a)}</td><td class="${b > a ? "up" : ""}">${f(b)}</td></tr>`).join("");
+  $("r-eval-note").textContent = ev.available
+    ? `Scored by the API on ${num(ev.labelled_observations)} labelled observations · candidate miss rate ${pct(ev.candidate_miss_rate)}`
+    : (ev.reason || "No evaluation available");
+
+  const st = Object.assign({}, r.timings_s, ev.available ? { evaluation_s: ev.evaluation_s } : {});
+  const names = { cleaning_s: "Cleaning", features_s: "Features", classifier_s: "Classifier", hmm_s: "HMM/Viterbi", evaluation_s: "Evaluation" };
+  const max = Math.max(...Object.values(st), 0.001);
+  $("r-stages").innerHTML = Object.entries(st).map(([k, v]) =>
+    `<div><span>${names[k] || k}</span><span class="bar" style="width:${100 * v / max}%"></span><span class="muted">${v.toFixed(2)} s</span></div>`).join("");
+  const s = r.stats;
+  $("r-stats").innerHTML = [
+    ["GPS points", num(s.gps_points)], ["Observations matched", num(s.observations)],
+    ["Time-gap segments", s.segments], ["Candidate arcs per point", s.mean_candidates.toFixed(1)],
+    ["Points without candidates", num(s.observations_without_candidates)], ["HMM breaks", s.hmm_breaks],
+  ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("");
+
+  initMap();
+  if (!map) { $("empty").textContent = "Map library could not load (no internet?) — results are shown on the left."; return; }
+  $("empty").hidden = true; $("legend").hidden = false;
+  Object.values(layers).forEach(l => map.removeLayer(l));
+  const css = getComputedStyle(document.documentElement);
+  const on = pane => ({ pane, renderer: renderers[pane] });
+  layers.gps = L.layerGroup(r.gps.map(p => L.circleMarker(p, { ...on("gpsPane"), radius: 2, stroke: false, fillColor: "#777", fillOpacity: 0.45 })));
+  layers.route = L.layerGroup(r.route_hmm.map(line => L.polyline(line, { ...on("routePane"), color: css.getPropertyValue("--accent"), weight: 5, opacity: 0.9 })));
+  layers.clf = L.layerGroup(r.route_classifier.map(seg => L.polyline(seg, { ...on("clfPane"), color: css.getPropertyValue("--orange"), weight: 2.5, opacity: 0.95, dashArray: "5 5" })));
+  [["gps", "lg-gps"], ["route", "lg-route"], ["clf", "lg-clf"]].forEach(([k, box]) => {
+    if ($(box).checked) layers[k].addTo(map);
+    $(box).onchange = e => e.target.checked ? layers[k].addTo(map) : map.removeLayer(layers[k]);
+  });
+  map.invalidateSize();
+  map.fitBounds(L.latLngBounds(r.gps), { padding: [30, 30] });
+}
+
+$("connect").onclick = connect;
+$("api").addEventListener("keydown", e => { if (e.key === "Enter") connect(); });
+connect();
+</script>
+</body>
+</html>

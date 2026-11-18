@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn>=0.29
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+scikit-learn==1.9.0   # must match the version that saved artifacts/hgb_model.joblib
+joblib>=1.3
