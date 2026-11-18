@@ -156,8 +156,20 @@ function initMap() {
     map.createPane(name).style.zIndex = z;
     renderers[name] = L.canvas({ pane: name });
   });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+  // OpenStreetMap's servers return "Access blocked" tiles to pages with no web address (opened by double-click,
+  // file://), because the browser then sends no Referer. Esri's tiles have no such rule, so they are the default there.
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  const bases = {
+    "Street map (OpenStreetMap)": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "© OpenStreetMap contributors" }),
+    "Street map (Esri)": L.tileLayer(esri + "World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, attribution: "Tiles © Esri" }),
+    "Satellite (Esri)": L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, attribution: "Tiles © Esri" }),
+  };
+  const served = location.protocol === "http:" || location.protocol === "https:";
+  bases[served ? "Street map (OpenStreetMap)" : "Street map (Esri)"].addTo(map);
+  L.control.layers(bases, null, { position: "topright" }).addTo(map);
 }
 
 async function run(id) {
