@@ -99,6 +99,7 @@ def analyze_track(track_file):
             float(reliable["speed_kph"].mean()) if len(reliable) else 0
         ),
         "maximum_acceleration": float(acceleration.max()) if len(acceleration) else 0,
+        "reliable_speeds": reliable["speed_kph"].tolist(),
         "speeds_over_180_kph": int(valid_speeds.gt(180).sum()),
         "jumps_over_500m": int(track["distance_m"].gt(500).sum()),
         "jumps_over_1000m": int(track["distance_m"].gt(1000).sum()),
@@ -145,6 +146,7 @@ def main():
     all_gaps = []
     all_speeds = []
     all_accelerations = []
+    all_reliable_speeds = []
     all_durations = []
     speed_vs_time_track = None
     smallest_duration = float("inf")
@@ -157,6 +159,7 @@ def main():
         all_gaps.extend(track["time_diff"].dropna().tolist())
         all_speeds.extend(track["speed_kph"].tolist())
         all_accelerations.extend(track["acceleration_mps2"].tolist())
+        all_reliable_speeds.extend(movement_result["reliable_speeds"])
         all_durations.append(timestamp_result["duration_seconds"])
 
         duration = timestamp_result["duration_seconds"]
@@ -167,7 +170,9 @@ def main():
     timestamps = pd.DataFrame(timestamp_results)
     movements = pd.DataFrame(movement_results)
     timestamps.to_csv(OUTPUT_DIR / "timestamp_summary.csv", index=False)
-    movements.to_csv(OUTPUT_DIR / "movement_summary.csv", index=False)
+    movements.drop(columns=["reliable_speeds"]).to_csv(
+        OUTPUT_DIR / "movement_summary.csv", index=False
+    )
 
     save_histogram(
         all_gaps,
@@ -212,9 +217,9 @@ def main():
 
     gap_series = pd.Series(all_gaps).replace([np.inf, -np.inf], np.nan).dropna()
     speed_series = pd.Series(all_speeds).replace([np.inf, -np.inf], np.nan).dropna()
-    reliable_speeds = speed_series[
-        speed_series.ge(0) & speed_series.le(250)
-    ]
+    reliable_speeds = pd.Series(all_reliable_speeds).replace(
+        [np.inf, -np.inf], np.nan
+    ).dropna()
 
     top_gap_trips = timestamps.nlargest(10, "maximum_gap_seconds")[
         ["trip", "dataset", "maximum_gap_seconds", "gaps_over_5_seconds"]
@@ -259,8 +264,9 @@ def main():
         "## Interpretation",
         "- Most observations are sampled every second.",
         "- Large gaps are likely missing observations or timestamp irregularities.",
-        "- Raw high speeds may be inflated because distance is divided by a very large time gap.",
+        "- Large timestamp gaps make segment-speed estimates unreliable; GPS noise or position jumps can create high-speed outliers.",
         "- Reliable speeds were filtered to a 1-5 second gap and 0-250 km/h range.",
+        "- The reliable-speed average now uses the same gap filter, so it is not inflated by large time gaps.",
         "- Stationary observations indicate that several consecutive GPS points are very close.",
         "",
         "## Trips with the Largest Timestamp Gaps",

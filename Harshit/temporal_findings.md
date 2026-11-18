@@ -23,7 +23,7 @@
 - Average GPS speed: 49.808 km/h
 - Median GPS speed: 40.662 km/h
 - Maximum GPS speed: 648.497 km/h
-- Average reliable GPS speed: 49.634 km/h
+- Average reliable GPS speed: 49.815 km/h
 - Observations over 180 km/h: 1532
 - Jumps over 500 metres: 4
 - Jumps over 1,000 metres: 0
@@ -33,8 +33,9 @@
 ## Interpretation
 - Most observations are sampled every second.
 - Large gaps are likely missing observations or timestamp irregularities.
-- Raw high speeds may be inflated because distance is divided by a very large time gap.
+- Large timestamp gaps make segment-speed estimates unreliable; GPS noise or position jumps can create high-speed outliers.
 - Reliable speeds were filtered to a 1-5 second gap and 0-250 km/h range.
+- The reliable-speed average now uses the same gap filter, so it is not inflated by large time gaps.
 - Stationary observations indicate that several consecutive GPS points are very close.
 
 ## Trips with the Largest Timestamp Gaps
