@@ -58,6 +58,8 @@
   .legend label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 2px 0; }
   .sw { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
   .sw.pt { width: 8px; height: 8px; border-radius: 50%; }
+  .filebtn { display: inline-block; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); padding: 8px 12px; }
+  .legend label.off { opacity: .45; cursor: default; }
   @media (max-width: 800px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 60vh; height: auto; } aside { border-right: 0; } main { height: 60vh; } }
 </style>
 </head>
@@ -76,6 +78,12 @@
 
     <h2>Evaluation trips</h2>
     <div id="trips" class="trips"><span class="muted">Connect to load the trips.</span></div>
+
+    <h2>Ground truth overlay (optional, local)</h2>
+    <div class="row">
+      <label class="filebtn"><input id="gt-folder" type="file" webkitdirectory directory multiple hidden>Choose trips folder…</label>
+    </div>
+    <div class="status"><span id="gt-dot" class="dot"></span><span id="gt-status">Not loaded. Read on this laptop only, never sent to the API.</span></div>
 
     <div id="results" hidden>
       <h2>Trip <span id="r-trip"></span></h2>
@@ -96,13 +104,14 @@
       <table style="margin-top:8px"><tbody id="r-stats"></tbody></table>
     </div>
 
-    <div class="note">Ground-truth routes stay on the API server. This page receives only the predicted route and the accuracy the server computed.</div>
+    <div class="note">The API never sends ground truth to this page: it returns only the predicted route and the accuracy it computed. The optional overlay above is read from a folder on this laptop and is never uploaded.</div>
   </aside>
 
   <main>
     <div id="map"></div>
     <div id="empty" class="empty">Select a trip to run the pipeline</div>
     <div id="legend" class="legend" hidden>
+      <label id="lg-gt-label" class="off" title="Choose the trips folder on the left to enable"><input type="checkbox" id="lg-gt" disabled><span class="sw" style="background:#1f9d55;height:8px;opacity:.6"></span>Ground truth (local file)</label>
       <label><input type="checkbox" id="lg-route" checked><span class="sw" style="background:var(--accent)"></span>Predicted route (HMM)</label>
       <label><input type="checkbox" id="lg-clf"><span class="sw" style="background:var(--orange)"></span>Classifier only</label>
       <label><input type="checkbox" id="lg-gps" checked><span class="sw pt" style="background:#555"></span>GPS points</label>
@@ -152,7 +161,7 @@ function initMap() {
   if (map || typeof L === "undefined") return;
   map = L.map("map");
   // one pane (and canvas) per layer, so the stacking order never changes when layers are toggled
-  [["gpsPane", 410], ["routePane", 420], ["clfPane", 430]].forEach(([name, z]) => {
+  [["gpsPane", 410], ["gtPane", 415], ["routePane", 420], ["clfPane", 430]].forEach(([name, z]) => {
     map.createPane(name).style.zIndex = z;
     renderers[name] = L.canvas({ pane: name });
   });
@@ -236,6 +245,53 @@ function show(r) {
   });
   map.invalidateSize();
   map.fitBounds(L.latLngBounds(r.gps), { padding: [30, 30] });
+  currentTrip = r.trip_id;
+  drawGroundTruth();
+}
+
+// ---- Optional ground-truth overlay, read from a folder on THIS laptop (FileReader only; no network request) ----
+let localFiles = {}, gtCache = {}, currentTrip = null;
+
+$("gt-folder").onchange = e => {
+  localFiles = {}; gtCache = {};
+  for (const f of e.target.files) if (/^\w+\.(route|nodes|arcs)$/.test(f.name)) localFiles[f.name] = f;
+  const trips = Object.keys(localFiles).filter(n => n.endsWith(".route")).length;
+  $("gt-status").textContent = trips ? `${trips} trips with a reference route found locally — toggle it on the map legend`
+                                     : "No .route files found in that folder";
+  $("gt-dot").className = "dot " + (trips ? "ok" : "err");
+  drawGroundTruth();
+};
+
+async function readGroundTruth(tid) {
+  if (gtCache[tid]) return gtCache[tid];
+  const [r, n, a] = ["route", "nodes", "arcs"].map(ext => localFiles[`${tid}.${ext}`]);
+  if (!r || !n || !a) return null;
+  const [rt, nt, at] = await Promise.all([r.text(), n.text(), a.text()]);
+  const nodeLines = nt.split("\n"), arcLines = at.split("\n");
+  const arcIds = rt.split(/\s+/).filter(Boolean).map(Number);
+  const pt = i => { const [lon, lat] = nodeLines[i].trim().split(/\s+/).map(Number); return [lat, lon]; };
+  // consecutive arcs that join (end node = next start node) form one polyline
+  const lines = []; let cur = null, prevV = null;
+  for (const id of arcIds) {
+    const [u, v] = arcLines[id].trim().split(/\s+/).map(Number);
+    if (cur && u === prevV) cur.push(pt(v)); else { cur = [pt(u), pt(v)]; lines.push(cur); }
+    prevV = v;
+  }
+  return (gtCache[tid] = lines);
+}
+
+async function drawGroundTruth() {
+  if (!map || !currentTrip) return;
+  if (layers.gt) { map.removeLayer(layers.gt); delete layers.gt; }
+  const lines = await readGroundTruth(currentTrip).catch(() => null);
+  const box = $("lg-gt"), label = $("lg-gt-label");
+  box.disabled = !lines; label.classList.toggle("off", !lines);
+  label.title = lines ? "Reference route from the local trip folder" : `No local reference route for trip ${currentTrip}`;
+  if (!lines) { box.checked = false; return; }
+  // a wide band under the thinner blue route: where they agree green shows as an outline, where they differ it stands alone
+  layers.gt = L.layerGroup(lines.map(l => L.polyline(l, { pane: "gtPane", renderer: renderers.gtPane, color: "#1f9d55", weight: 12, opacity: 0.6 })));
+  if (box.checked) layers.gt.addTo(map);
+  box.onchange = e => e.target.checked ? layers.gt.addTo(map) : map.removeLayer(layers.gt);
 }
 
 $("connect").onclick = connect;
